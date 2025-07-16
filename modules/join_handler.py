@@ -1,11 +1,11 @@
 import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
+from .game_handler import start_game_session  # Pastikan ini ada
 
 game_sessions = {}
 MIN_PLAYERS = 2
 MAX_PLAYERS = 5
-WAIT_TIME = 60  # detik
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -24,9 +24,9 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game_sessions[chat_id] = {
             "players": [],
             "active": False,
-            "countdown_started": False,
             "scores": {},
-            "used_words": []
+            "used_words": [],
+            "last_word": None
         }
         session = game_sessions[chat_id]
 
@@ -42,36 +42,18 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session["scores"][user_id] = 0
 
     await update.message.reply_text(
-        f"✅ {user.first_name} telah bergabung di room *{group_name}*.",
+        f"✅ {user.first_name} telah bergabung di room *{group_name}*.\n👥 Total pemain: {len(session['players'])}",
         parse_mode="Markdown"
     )
 
     if len(session["players"]) > 1:
         await update.message.reply_text("🎉 Pemain baru telah bergabung!\nMakin banyak pemain, makin seru!")
 
-    # ⏳ Start countdown hanya sekali
-    if not session["countdown_started"]:
-        session["countdown_started"] = True
+    # 🎮 Auto-start game saat pemain minimal terpenuhi
+    if len(session["players"]) == MIN_PLAYERS and not session["active"]:
+        session["active"] = True
         await context.bot.send_message(
             chat_id=chat_id,
-            text="⏳ *1 menit sebelum room dibatalkan!*\nAyo tekan /join kalau mau ikut!",
-            parse_mode="Markdown"
+            text="✅ Jumlah pemain mencukupi!\nGame akan dimulai sekarang 🚀"
         )
-        await asyncio.sleep(WAIT_TIME)
-
-        # ⌛ Evaluasi jumlah pemain
-        if len(session["players"]) < MIN_PLAYERS:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="😢 Game dibatalkan karena pemain tidak mencukupi.\nCoba lagi nanti ya!"
-            )
-            game_sessions.pop(chat_id)
-        else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    f"✅ Room siap! {len(session['players'])} pemain bergabung.\n"
-                    "Silakan kirim kata pertama atau tunggu sistem giliran aktif 🎮"
-                )
-            )
-            session["active"] = True
+        await start_game_session(chat_id, context)
